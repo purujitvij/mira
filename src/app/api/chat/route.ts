@@ -3,6 +3,8 @@ import { runAgent } from "@/agents/pipeline";
 import { runBaseline } from "@/agents/baseline";
 import { newCtx } from "@/agents/pipeline";
 
+export const maxDuration = 60; // Vercel: an agent turn is 3 model calls + a streamed reply; the default 10 s is too short
+
 const Body = z.object({ userId: z.string().min(1).max(64), message: z.string().min(1).max(4000), mode: z.enum(["agent", "baseline"]).default("agent") });
 
 export async function POST(request: Request) {

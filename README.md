@@ -119,6 +119,16 @@ Hosted alternative (the second set of tables above): a Google AI Studio key with
 
 Versions: Node 20+ (tested on 26), Postgres 17, pinned in `package-lock.json` (Next 16.3, `pg` 8, `zod` 4, `tsx` 4). Data: synthetic only — `eval/cases.json` and whatever you type.
 
+## Deploy (Supabase + Vercel)
+
+The database layer is plain `pg`; Supabase is just hosted Postgres.
+
+1. Supabase → New project → **Connect** → copy the **Transaction pooler** connection string (port 6543). Nothing to create by hand: the schema applies itself on the first request.
+2. Vercel → Import the repo → Environment variables: `DATABASE_URL` (the string from step 1), `LLM_BASE_URL`, `LLM_API_KEY`, `MIRA_MODEL` (a hosted model — Ollama on localhost is not reachable from Vercel). Deploy.
+3. Open `/`, send a message, then `/review` — the tables exist the moment the first request lands.
+
+Notes: `src/lib/db.ts` turns on TLS and shrinks the pool to 3 whenever `DATABASE_URL` is not localhost; `next.config.ts` bundles `db/schema.sql` into the functions; `api/chat` declares `maxDuration = 60` because an agent turn is three model calls plus a streamed reply. The eval scripts run from a laptop against the same `DATABASE_URL` if you want the results tables to live in Supabase too.
+
 ## Layout
 
 ```
