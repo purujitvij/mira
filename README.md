@@ -95,7 +95,7 @@ Requires Node 20+, Postgres (Docker, Homebrew, or a Supabase project), and a Goo
 
 ```bash
 git clone https://github.com/purujitvij/mira.git && cd mira
-cp .env.example .env.local          # put your Gemini key in LLM_API_KEY; DATABASE_URL as below
+cp .env.example .env.local          # put your Gemini key in LLM_API_KEY; DATABASE_URL as below; Clerk keys from dashboard.clerk.com
 npm ci
 npm run db:up                       # Postgres 17 in Docker on localhost:5433 (schema auto-applies on first query)
                                     # no Docker? `brew install postgresql@17 && brew services start postgresql@17`,
@@ -116,12 +116,18 @@ Any other OpenAI-compatible endpoint works with the same three variables (`LLM_B
 
 Versions: Node 20+ (tested on 26), Postgres 17, pinned in `package-lock.json` (Next 16.3, `pg` 8, `zod` 4, `tsx` 4). Data: synthetic only — `eval/cases.json` and whatever you type.
 
+## Auth (Clerk)
+
+Every page and API route requires a Clerk session (`src/proxy.ts`, Next 16's middleware convention); the signed-in `userId` is the `user_id` in every table, taken from the session server-side — never from the request body. `/review` and `/trace` additionally require `publicMetadata.reviewer = true` on the user (Clerk dashboard → Users → pick the reviewer → Metadata → Public); anyone else gets a 404. Keys: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`. The eval (`npm run eval`) calls the pipeline directly and needs no session.
+
+**Clerk ↔ Supabase.** The browser loads the signed-in user's own history straight from Supabase's REST API using the Clerk session token (`src/app/page.tsx`), gated by the RLS policies in `supabase/migrations/*_clerk_rls_select_own.sql` (`user_id = auth.jwt()->>'sub'`). One-time setup: (1) Clerk dashboard → dashboard.clerk.com/setup/supabase → activate, which adds `role: "authenticated"` to session tokens; (2) Supabase → Authentication → Sign In / Providers → Third-Party Auth → Clerk, domain `https://<instance>.clerk.accounts.dev`; (3) apply the `clerk_rls_select_own` migration (already applied to the `mira` project; `supabase db push` or the Supabase MCP for a new project). `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` come from Settings → API. All writes still go through `pg` on the server; `review_queue` and `traces` have no policies and are unreachable from the browser.
+
 ## Deploy (Supabase + Vercel)
 
 The database layer is plain `pg`; Supabase is just hosted Postgres.
 
 1. Supabase → New project → **Connect** → copy the **Transaction pooler** connection string (port 6543). Nothing to create by hand: the schema applies itself on the first request.
-2. Vercel → Import the repo → Environment variables: `DATABASE_URL` (the string from step 1), `LLM_BASE_URL`, `LLM_API_KEY`, `MIRA_MODEL` (a hosted model — Ollama on localhost is not reachable from Vercel). Deploy.
+2. Vercel → Import the repo → Environment variables: `DATABASE_URL` (the string from step 1), `LLM_BASE_URL`, `LLM_API_KEY`, `MIRA_MODEL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` (a hosted model — Ollama on localhost is not reachable from Vercel). Deploy.
 3. Open `/`, send a message, then `/review` — the tables exist the moment the first request lands.
 
 Notes: use the **Transaction pooler** string (`…pooler.supabase.com:6543`), not the direct one (`db.<ref>.supabase.co:5432`) — direct connections are IPv6-only on Supabase and unreachable from Vercel, though they work from a laptop. `db/schema.sql` enables row-level security on every table with no policies, so nothing is readable through Supabase's REST API with the publishable key (verified: `GET /rest/v1/messages` returns `[]`); the app connects as the table owner and is unaffected. `src/lib/db.ts` turns on TLS and shrinks the pool to 3 whenever `DATABASE_URL` is not localhost; `next.config.ts` bundles `db/schema.sql` into the functions; `api/chat` declares `maxDuration = 60` because an agent turn is three model calls plus a streamed reply. The eval scripts run from a laptop against the same `DATABASE_URL` if you want the results tables to live in Supabase too.

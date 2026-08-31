@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic";
 import { q } from "@/lib/db";
+import { requireReviewer } from "@/lib/auth";
 
 export default async function Trace({ params }: { params: Promise<{ id: string }> }) {
+  await requireReviewer();
   const { id } = await params;
   const rows = await q<{ node: string; ms: number; tokens_in: number; tokens_out: number; meta: Record<string, unknown>; created_at: string }>(
     "SELECT node, ms, tokens_in, tokens_out, meta, created_at FROM traces WHERE request_id=$1 ORDER BY id", [id]);

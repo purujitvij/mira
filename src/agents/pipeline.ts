@@ -14,8 +14,8 @@ const CRISIS_TEXT =
   "It sounds like you're in a lot of pain right now, and I'm really glad you said it here. I'm not able to keep you safe on my own, and you deserve support from a real person tonight. Please reach one of these now — they are free and available 24/7. If you're in immediate danger, go to the nearest emergency room.";
 const SOFT_RESOURCE = " If things get heavier, Tele MANAS is free and open 24/7: 14416.";
 
-export function newCtx(userId: string): Ctx {
-  return { requestId: crypto.randomUUID(), userId };
+export function newCtx(userId: string, name: string | null = null): Ctx {
+  return { requestId: crypto.randomUUID(), userId, name };
 }
 
 /** Advanced solution: safety gate -> (extract ‖ memory) -> plan (pure) -> generate (stream). */
@@ -55,7 +55,7 @@ export async function* runAgent(ctx: Ctx, message: string): AsyncGenerator<Event
   yield { type: "intervention", intervention: plan.intervention, reason: plan.reason };
 
   let reply = "";
-  const gen = generateReply({ message, history, state, intervention: plan.intervention, pattern });
+  const gen = generateReply({ message, history, state, intervention: plan.intervention, pattern, name: ctx.name ?? null });
   const tg0 = Date.now();
   let next = await gen.next();
   while (!next.done) { reply += next.value; yield { type: "token", text: next.value }; next = await gen.next(); }

@@ -44,3 +44,7 @@ next-env.d.ts
 !.env.example
 .playwright-mcp/
 .mcp.json
+
+# SQL is applied to Supabase as migrations, not shipped in the repo — except db/schema.sql, which src/lib/db.ts reads at runtime.
+*.sql
+!db/schema.sql
