@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# keep the template, ignore real env files (create-next-app ignores .env*)
+!.env.example
+.playwright-mcp/
