@@ -11,7 +11,9 @@ export type Ratings = Record<string, { helpful: number; unhelpful: number }>;
  */
 export function planIntervention(state: State | null, ratings: Ratings = {}): { intervention: Intervention | null; reason: string } {
   if (!state) return { intervention: null, reason: "no state extracted; listen only" };
-  if (state.wants === "vent") return { intervention: null, reason: "user wants to be heard, not given a task" };
+  // Iteration 5: "vent" alone used to suppress every exercise. A stronger extractor labels most check-ins as vent
+  // while still naming a concrete need, so only stay silent when it names none.
+  if (state.wants === "vent" && (!state.need || state.need === "none")) return { intervention: null, reason: "user wants to be heard, not given a task" };
 
   const energy = state.energy < 0.35 ? "low" : "mid";
   const stress = state.stress >= 0.6 ? "high" : "low";

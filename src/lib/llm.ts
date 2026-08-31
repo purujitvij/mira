@@ -21,6 +21,7 @@ async function chat(body: Record<string, unknown>): Promise<Response> {
       method: "POST",
       headers: { authorization: `Bearer ${process.env.LLM_API_KEY ?? ""}`, "content-type": "application/json" },
       body: JSON.stringify({ model: MODEL, ...body }),
+      signal: AbortSignal.timeout(60_000), // one Gemini call stalled 251 s during eval; fail fast, the gate fails safe
     });
     if (res.ok) return res;
     const text = (await res.text()).slice(0, 300);
