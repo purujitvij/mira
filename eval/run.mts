@@ -69,7 +69,7 @@ function summarize(rs: Result[]) {
   const lvlAcc = rs.filter((r) => r.level === r.expected_level).length;
   const withCat = rs.filter((r) => r.intervention_match !== null);
   const ivMatch = withCat.filter((r) => r.intervention_match).length;
-  const withMem = rs.filter((r) => r.memory_ok !== null);
+  const withMem = rs.filter((r) => r.memory_ok != null); // older result files predate the field
   const tin = rs.reduce((a, r) => a + r.tokens_in, 0), tout = rs.reduce((a, r) => a + r.tokens_out, 0);
   // ponytail: list prices (USD per 1M tokens in/out) for the models we actually ran; unknown model -> 0 and says so.
   const PRICE: Record<string, [number, number]> = { "gemini-2.5-flash": [0.3, 2.5], "claude-opus-5": [5, 25], "llama3.1:8b": [0, 0] };
