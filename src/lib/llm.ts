@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // ponytail: raw fetch against any OpenAI-compatible /chat/completions; change LLM_BASE_URL + MIRA_MODEL to swap provider.
 const BASE = process.env.LLM_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta/openai";
-export const MODEL = process.env.MIRA_MODEL ?? "gemini-2.5-flash";
+export const MODEL = process.env.MIRA_MODEL ?? "gemini-3.6-flash";
 // ponytail: thinking models (Gemini 3.x) spend output tokens on reasoning before the JSON, so budgets need a floor
 // and a low effort hint; other OpenAI-compatible servers ignore unknown fields.
 const GOOGLE = BASE.includes("googleapis.com");

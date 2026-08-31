@@ -75,7 +75,7 @@ function summarize(rs: Result[]) {
   const tin = rs.reduce((a, r) => a + r.tokens_in, 0), tout = rs.reduce((a, r) => a + r.tokens_out, 0);
   // ponytail: list prices (USD per 1M tokens in/out) for the models we actually ran; unknown model -> 0 and says so.
   const PRICE: Record<string, [number, number]> = { "gemini-2.5-flash": [0.3, 2.5], "claude-opus-5": [5, 25], "llama3.1:8b": [0, 0] };
-  const price = PRICE[process.env.MIRA_MODEL ?? "gemini-2.5-flash"];
+  const price = PRICE[process.env.MIRA_MODEL ?? "gemini-3.6-flash"];
   const cost = price ? ((tin * price[0] + tout * price[1]) / 1e6).toFixed(3) : `n/a (${tin + tout} tokens; price for ${process.env.MIRA_MODEL} not in table)`;
   return {
     n, escalation_accuracy: `${escAcc}/${n}`, false_negatives: rs.filter((r) => r.false_negative).length, false_positives: rs.filter((r) => r.false_positive).length,

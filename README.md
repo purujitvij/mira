@@ -22,14 +22,14 @@ Starting point: `create-next-app` (the single pre-existing commit, `84b0dc6`). E
 | Memory | transcript only | last 6 turns + per-intervention ratings + a non-causal pattern sentence |
 | Oversight | none | `/review` queue for every High/Critical call and rule/LLM disagreement |
 
-Both run the same model (`MIRA_MODEL`, default `gemini-2.5-flash`), the same database, and the same 15 evaluation cases. The baseline sees the last 10 turns; the agent sees 6 plus ratings — the baseline is not resource-starved.
+Both run the same model (`MIRA_MODEL`, default `gemini-3.6-flash`), the same database, and the same 15 evaluation cases. The baseline sees the last 10 turns; the agent sees 6 plus ratings — the baseline is not resource-starved.
 
 ## Results
 
 Two models, same code, same three case sets, same baseline. Tables are the verbatim output of `npm run eval -- --compare [--cases …] [--tag gemini]`; raw per-case output with every reply is in [`eval/results/`](eval/results/).
 
 - **Gemini 3.6 Flash** (hosted, billed key) — run on the final code. Primary tables.
-- **Llama 3.1 8B via Ollama** (local, free) — run on the code as of Iteration 4; Ollama was uninstalled on this machine before Iteration 5 (planner vent gate, `f80cc21`) could be re-run. Everything else is identical. Kept because it is the zero-cost reproduction path and because the gap between the two models is part of the story.
+- **Llama 3.1 8B** (via a local Ollama server, since removed — not required for anything) — run on the code as of Iteration 4, before Iteration 5 (planner vent gate, `f80cc21`). Kept as evidence: the gap between the two models is part of the story.
 
 ### Gemini 3.6 Flash
 
@@ -64,7 +64,7 @@ Two models, same code, same three case sets, same baseline. Tables are the verba
 
 Tokens for all three agent runs: ≈25k in+out (printed per run); at Flash-class list prices well under $0.10. Baseline runs ≈10k.
 
-### Llama 3.1 8B (Ollama)
+### Llama 3.1 8B (historical, Iteration-4 code)
 
 | Metric | Original 15 — Baseline | Agent | Held-out 16 — Baseline | Agent | Memory 6 — Agent |
 |---|---|---|---|---|---|
@@ -91,31 +91,28 @@ See [CHANGELOG.md](CHANGELOG.md) for how each iteration moved these numbers, inc
 
 ## Reproduce (clean machine)
 
-Requires Node 20+, Postgres (Docker or Homebrew), and an LLM behind an OpenAI-compatible endpoint. The reported numbers use **Ollama with `llama3.1:8b`** — free, offline, no quota — so that is the default path; a hosted key is optional.
+Requires Node 20+, Postgres (Docker, Homebrew, or a Supabase project), and a Google AI Studio key with **billing enabled** on its project (Gemini's free tier — 5 requests/minute on `gemini-3.6-flash`, 20/day on `gemini-2.5-flash` — is too small for the eval; a full run of all three sets is a few cents). Nothing runs locally except Node and, if you choose it, Postgres.
 
 ```bash
 git clone https://github.com/purujitvij/mira.git && cd mira
-brew install ollama && brew services start ollama && ollama pull llama3.1:8b   # ~4.9 GB, once (Linux: curl -fsSL https://ollama.com/install.sh | sh)
-cp .env.example .env.local          # already points at Ollama; nothing to edit
+cp .env.example .env.local          # put your Gemini key in LLM_API_KEY; DATABASE_URL as below
 npm ci
 npm run db:up                       # Postgres 17 in Docker on localhost:5433 (schema auto-applies on first query)
                                     # no Docker? `brew install postgresql@17 && brew services start postgresql@17`,
                                     # createuser -s mira; createdb -O mira mira; set port 5432 in .env.local
+                                    # or a Supabase pooler URL — see "Deploy" below; same code either way
 npm test                            # rule tier + planner unit checks, no model calls
-npm run eval -- --mode baseline     # 15 model calls
-npm run eval -- --mode agent        # 45 model calls
-npm run eval -- --compare           # table 1 above
-for set in heldout memory; do       # tables 2 and 3
-  npm run eval -- --mode baseline --cases eval/cases-$set.json
-  npm run eval -- --mode agent    --cases eval/cases-$set.json
-  npm run eval -- --compare       --cases eval/cases-$set.json
+for set in cases cases-heldout cases-memory; do
+  npm run eval -- --mode baseline --cases eval/$set.json --tag gemini
+  npm run eval -- --mode agent    --cases eval/$set.json --tag gemini
+  npm run eval -- --compare       --cases eval/$set.json --tag gemini   # the three Gemini tables above
 done
 npm run dev                         # http://localhost:3000  (mode switch top-right; /review; /trace/<id>)
 ```
 
-Expected: `eval/results/{baseline,agent}[-heldout|-memory][.gemini].json` and a markdown table on stdout per set. Models are not deterministic: expect escalation within ±1 of the tables (the one unstable case is the injection prompt on the 8B model), exact level within ±2, intervention picks to vary. Crisis cases have escalated in every run of every set on both models. Runtime on a 16 GB M4: ≈5 min per set for baseline + agent (≈12 min for all three). Cost: $0.
+Expected: `eval/results/{baseline,agent}[-heldout|-memory].gemini.json` and a markdown table on stdout per set. Models are not deterministic: expect escalation within ±1 of the tables, exact level within ±2, intervention picks to vary. Crisis cases have escalated in every run of every set. Runtime ≈2 min per set (≈6 min for all three); ≈35k tokens total. Two things the client does for Gemini 3.x specifically (`src/lib/llm.ts`): it floors `max_tokens` at 1500 and sends `reasoning_effort: low`, because the model spends output tokens on reasoning before the JSON and a 300-token budget came back as truncated JSON; and every call aborts at 60 s after one call stalled for 251 s mid-eval.
 
-Hosted alternative (the second set of tables above): a Google AI Studio key with **billing enabled** on the project, `LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai`, `LLM_API_KEY=<key>`, `MIRA_MODEL=gemini-3.6-flash`; add `--tag gemini` to every eval command so results land in `eval/results/*.gemini.json` next to the Ollama ones. Without billing, Gemini's free tier is 5 requests/minute on `gemini-3.6-flash` and 20/day on `gemini-2.5-flash` — not enough for a run. Two things the client does for Gemini 3.x specifically (`src/lib/llm.ts`): it floors `max_tokens` at 1500 and sends `reasoning_effort: low`, because the model spends output tokens on reasoning before the JSON and a 300-token budget came back as truncated JSON; and every call aborts at 60 s after one call stalled for 251 s mid-eval. Any other OpenAI-compatible provider (Groq, OpenRouter, Cerebras) should work with the same three variables; not tested.
+Any other OpenAI-compatible endpoint works with the same three variables (`LLM_BASE_URL`, `LLM_API_KEY`, `MIRA_MODEL`) and a different `--tag`: the Llama 3.1 8B tables were produced that way with a local Ollama server, which is optional and no longer part of the setup.
 
 Versions: Node 20+ (tested on 26), Postgres 17, pinned in `package-lock.json` (Next 16.3, `pg` 8, `zod` 4, `tsx` 4). Data: synthetic only — `eval/cases.json` and whatever you type.
 
