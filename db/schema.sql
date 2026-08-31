@@ -10,6 +10,12 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS messages_user_idx ON messages (user_id, created_at DESC);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id UUID;
+-- Backfill: each user's pre-conversation messages become one legacy conversation. No-op once filled.
+UPDATE messages m SET conversation_id = u.cid
+  FROM (SELECT user_id, gen_random_uuid() AS cid FROM messages WHERE conversation_id IS NULL GROUP BY user_id) u
+  WHERE m.conversation_id IS NULL AND m.user_id = u.user_id;
+CREATE INDEX IF NOT EXISTS messages_conv_idx ON messages (user_id, conversation_id, created_at);
 
 CREATE TABLE IF NOT EXISTS feedback (
   id BIGSERIAL PRIMARY KEY,

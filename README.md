@@ -120,7 +120,7 @@ Versions: Node 20+ (tested on 26), Postgres 17, pinned in `package-lock.json` (N
 
 Every page and API route requires a Clerk session (`src/proxy.ts`, Next 16's middleware convention); the signed-in `userId` is the `user_id` in every table, taken from the session server-side — never from the request body. `/review` and `/trace` additionally require `publicMetadata.reviewer = true` on the user (Clerk dashboard → Users → pick the reviewer → Metadata → Public); anyone else gets a 404. Keys: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`. The eval (`npm run eval`) calls the pipeline directly and needs no session.
 
-**Clerk ↔ Supabase.** The browser loads the signed-in user's own history straight from Supabase's REST API using the Clerk session token (`src/app/page.tsx`), gated by the RLS policies in `supabase/migrations/*_clerk_rls_select_own.sql` (`user_id = auth.jwt()->>'sub'`). One-time setup: (1) Clerk dashboard → dashboard.clerk.com/setup/supabase → activate, which adds `role: "authenticated"` to session tokens; (2) Supabase → Authentication → Sign In / Providers → Third-Party Auth → Clerk, domain `https://<instance>.clerk.accounts.dev`; (3) apply the `clerk_rls_select_own` migration (already applied to the `mira` project; `supabase db push` or the Supabase MCP for a new project). `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` come from Settings → API. All writes still go through `pg` on the server; `review_queue` and `traces` have no policies and are unreachable from the browser.
+**Clerk ↔ Supabase.** The browser loads the signed-in user's own history straight from Supabase's REST API using the Clerk session token (`src/app/chat.tsx`), gated by the RLS policies in `supabase/migrations/*_clerk_rls_select_own.sql` (`user_id = auth.jwt()->>'sub'`). One-time setup: (1) Clerk dashboard → dashboard.clerk.com/setup/supabase → activate, which adds `role: "authenticated"` to session tokens; (2) Supabase → Authentication → Sign In / Providers → Third-Party Auth → Clerk, domain `https://<instance>.clerk.accounts.dev`; (3) apply the `clerk_rls_select_own` migration (already applied to the `mira` project; `supabase db push` or the Supabase MCP for a new project). `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` come from Settings → API. All writes still go through `pg` on the server; `review_queue` and `traces` have no policies and are unreachable from the browser.
 
 ## Deploy (Supabase + Vercel)
 
@@ -136,7 +136,7 @@ Notes: use the **Transaction pooler** string (`…pooler.supabase.com:6543`), no
 
 ```
 src/agents/safety.ts     rule tier + LLM classifier          src/app/api/chat/route.ts   SSE endpoint (agent|baseline)
-src/agents/extract.ts    quarantined state extraction        src/app/page.tsx            chat UI, exercise card, crisis screen
+src/agents/extract.ts    quarantined state extraction        src/app/chat.tsx            chat UI: conversation threads, exercise card, crisis screen
 src/agents/plan.ts       pure planner over the library       src/app/review/page.tsx     human reviewer queue
 src/agents/generate.ts   streamed reply, fixed fallback      src/app/trace/[id]/page.tsx per-request node trace
 src/agents/memory.ts     history, ratings, pattern           eval/run.mts, eval/cases.json

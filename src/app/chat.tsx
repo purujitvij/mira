@@ -4,10 +4,17 @@ import { UserButton, useSession, useUser } from "@clerk/nextjs";
 import { createClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Event, Intervention, Resource } from "@/agents/types";
-import { dayKey, dayLabel, since, runningDays } from "@/lib/days";
+import { dayKey, since, runningDays } from "@/lib/days";
+import { groupConvs } from "@/lib/convs";
 import Streak from "./streak";
 
 type Turn = { role: "user" | "assistant"; text: string; at: string; domain?: string; intervention?: Intervention | null; crisis?: Resource[]; pattern?: string | null; level?: string; requestId?: string; rated?: boolean };
+type Row = { conversation_id: string | null; role: "user" | "assistant"; content: string; safety_level: string | null; created_at: string; state: { domain?: string } | null };
+
+const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const toTurn = (r: Row): Turn => ({ role: r.role, text: r.content, level: r.safety_level ?? undefined, at: r.created_at, domain: r.state?.domain });
+const toRow = (cid: string) => (t: Turn): Row => ({ conversation_id: cid, role: t.role, content: t.text, safety_level: t.level ?? null, created_at: t.at, state: t.domain ? { domain: t.domain } : null });
+const cidOf = (r: Row) => r.conversation_id ?? "legacy";
 
 const onMind: Record<string, string> = { work: "work was on your mind", sleep: "sleep was on your mind", relationships: "someone close to you was on your mind", health: "your health was on your mind" };
 const timeOfDay = () => { const h = new Date().getHours(); return h < 5 ? "Hi" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
@@ -16,7 +23,9 @@ const PhoneIcon = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="no
 
 export default function Chat({ openReviews }: { openReviews: number | null }) {
   const [mode, setMode] = useState<"agent" | "baseline">("agent");
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<Turn[]>([]); // the thread on screen — the current conversation only
+  const [past, setPast] = useState<Row[]>([]); // every other saved message, chronological
+  const [convId, setConvId] = useState(() => crypto.randomUUID()); // page load = new chat
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
@@ -29,30 +38,36 @@ export default function Chat({ openReviews }: { openReviews: number | null }) {
   const supabase = useMemo(() => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { accessToken: async () => (await session?.getToken()) ?? null }), [session]);
   useEffect(() => {
     if (!session) return;
-    supabase.from("messages").select("role,content,safety_level,created_at,state").order("created_at").limit(200)
+    supabase.from("messages").select("conversation_id,role,content,safety_level,created_at,state").order("created_at").limit(200)
       .then(({ data, error }) => {
         if (error) { console.error("history_failed", error.message); return; }
-        setTurns((cur) => (cur.length ? cur : (data ?? []).map((m) => ({ role: m.role as Turn["role"], text: m.content, level: m.safety_level ?? undefined, at: m.created_at, domain: (m.state as { domain?: string } | null)?.domain }))));
+        setPast((cur) => (cur.length ? cur : ((data ?? []) as Row[])));
         setLoaded(true);
       });
   }, [session, supabase]);
 
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [turns]);
 
-  const days = turns.reduce<{ key: string; first: number; n: number }[]>((acc, t, i) => {
-    const key = dayKey(t.at); const d = acc.find((x) => x.key === key);
-    if (d) d.n += t.role === "user" ? 1 : 0; else acc.push({ key, first: i, n: t.role === "user" ? 1 : 0 });
-    return acc;
-  }, []);
-  const firstOfDay = new Set(days.map((d) => d.first));
-  const streak = runningDays(days.map((d) => d.key));
+  const convs = groupConvs(past.map((r) => ({ id: cidOf(r), role: r.role, text: r.content, at: r.created_at }))
+    .concat(turns.filter((t) => t.text).map((t) => ({ id: convId, role: t.role, text: t.text, at: t.at }))));
+  const everything = [...past.map(toTurn), ...turns].sort((a, b) => a.at.localeCompare(b.at));
+  const streak = runningDays([...new Set(everything.map((t) => dayKey(t.at)))]);
 
   // MIRA speaks first. Deterministic, from what is actually on record — no model call, nothing invented.
   const name = user?.firstName ? `, ${user.firstName}` : "";
-  const lastUser = [...turns].reverse().find((t) => t.role === "user");
+  const lastUser = [...everything].reverse().find((t) => t.role === "user");
   const greeting = !loaded ? null : !lastUser
     ? `${timeOfDay()}${name}. I'm Mira. This is a place to check in — how you're doing, what's on your mind. Nothing you say here has to be tidy. How are you today?`
     : `${timeOfDay()}${name}, good to see you again. We last talked ${since(lastUser.at)}${lastUser.domain && onMind[lastUser.domain] ? ` — ${onMind[lastUser.domain]}` : ""}. How has it been since?`;
+
+  /** Fold the on-screen thread back into `past`, then show `id` (or a fresh chat when null). */
+  function switchTo(id: string | null) {
+    if (busy || id === convId) return;
+    setPast((p) => [...p.filter((r) => cidOf(r) !== convId), ...turns.filter((t) => t.text).map(toRow(convId))].sort((a, b) => a.created_at.localeCompare(b.created_at)));
+    // ponytail: rows from before this feature have no conversation_id; replying to that thread starts a fresh one
+    setConvId(id !== null && uuidRe.test(id) ? id : crypto.randomUUID());
+    setTurns(id === null ? [] : past.filter((r) => cidOf(r) === id).map(toTurn));
+  }
 
   async function send() {
     const message = input.trim();
@@ -60,7 +75,7 @@ export default function Chat({ openReviews }: { openReviews: number | null }) {
     setInput(""); setBusy(true);
     const at = new Date().toISOString();
     setTurns((t) => [...t, { role: "user", text: message, at }, { role: "assistant", text: "", at }]);
-    const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, mode }) });
+    const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, mode, conversationId: convId }) });
     const reader = res.body!.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -100,26 +115,29 @@ export default function Chat({ openReviews }: { openReviews: number | null }) {
           <span className="text-[12px] leading-snug text-ink-3">A place to check in.</span>
         </div>
 
-        <nav aria-label="Check-ins by day" className="mt-9 flex min-h-0 flex-1 flex-col gap-3">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-3">Check-ins</span>
-          {days.length === 0 ? (
+        <nav aria-label="Conversations" className="mt-9 flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-3">Chats</span>
+            <button onClick={() => switchTo(null)} className="rounded-full px-2 py-1 text-[12px] font-medium text-sage-deep hover:bg-sage-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage">+ New chat</button>
+          </div>
+          {convs.length === 0 ? (
             <p className="text-[13px] leading-snug text-ink-4">Your first check-in will appear here.</p>
           ) : (
-            <ol className="-ml-6 flex flex-col overflow-y-auto border-l border-line pl-6">
-              {days.map((d) => { const today = dayLabel(d.key) === "Today"; return (
-                <li key={d.key} className="relative">
-                  <span aria-hidden className={`absolute top-[15px] -left-6 h-[7px] w-[7px] -translate-x-[4px] rounded-full ${today ? "bg-sage" : "bg-line-2"}`} />
-                  <a href={`#day-${d.key}`} className="flex items-baseline justify-between gap-3 rounded-md py-2 text-[14px] hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage">
-                    <span className={today ? "font-medium text-ink" : "text-ink-2"}>{dayLabel(d.key)}</span>
-                    <span className="text-[12px] tabular-nums text-ink-4">{d.n}</span>
-                  </a>
+            <ol className="flex flex-col gap-1 overflow-y-auto">
+              {convs.map((c) => { const active = c.id === convId; return (
+                <li key={c.id}>
+                  <button onClick={() => switchTo(c.id)} aria-current={active ? "true" : undefined}
+                    className={`flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left hover:bg-sand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage ${active ? "bg-sand" : ""}`}>
+                    <span className={`text-[13px] ${active ? "font-medium text-ink" : "text-ink-2"}`}>{c.label}</span>
+                    <span className="w-full truncate text-[12px] text-ink-4">{c.snippet || "…"}</span>
+                  </button>
                 </li>
               ); })}
             </ol>
           )}
         </nav>
 
-        {streak >= 2 && <Streak streak={streak} dayKeys={days.map((d) => d.key)} />}
+        {streak >= 2 && <Streak streak={streak} dayKeys={[...new Set(everything.map((t) => dayKey(t.at)))]} />}
 
         {openReviews !== null && (
           <Link href="/review" className={`${streak >= 2 ? "mt-2" : "mt-6"} flex items-center justify-between rounded-xl border border-line bg-white px-4 py-3 text-[13px] font-medium text-ink-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage`}>
@@ -149,11 +167,11 @@ export default function Chat({ openReviews }: { openReviews: number | null }) {
 
       <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col gap-7 px-5 py-9 sm:px-0">
         {turns.map((t, i) => t.role === "user" ? (
-          <div key={i} id={firstOfDay.has(i) ? `day-${dayKey(t.at)}` : undefined} className="flex scroll-mt-6 flex-col items-end">
+          <div key={i} className="flex flex-col items-end">
             <div className="max-w-[80%] rounded-[18px] rounded-br-[4px] bg-sand px-4 py-3 text-[15px] leading-normal whitespace-pre-wrap">{t.text}</div>
           </div>
         ) : (
-          <div key={i} id={firstOfDay.has(i) ? `day-${dayKey(t.at)}` : undefined} className="flex max-w-[640px] scroll-mt-6 flex-col gap-3.5">
+          <div key={i} className="flex max-w-[640px] flex-col gap-3.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-3">Mira</span>
 
             {t.pattern && (
@@ -223,7 +241,7 @@ export default function Chat({ openReviews }: { openReviews: number | null }) {
             )}
           </div>
         ))}
-        {greeting && !busy && turns.every((t) => t.role !== "assistant" || !t.requestId) && (
+        {greeting && !busy && turns.length === 0 && (
           <div className="flex max-w-[640px] flex-col gap-3.5">
             <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-3">Mira</span>
             <p className="font-serif text-[19px] leading-[1.55] text-pretty">{greeting}</p>
