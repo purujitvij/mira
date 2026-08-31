@@ -1,6 +1,6 @@
 /**
- * Usage: npm run eval -- --mode agent|baseline   (writes eval/results/<mode>.json)
- *        npm run eval -- --compare                 (prints the README table from both result files)
+ * Usage: npm run eval -- --mode agent|baseline [--cases eval/cases-heldout.json]   (writes eval/results/<mode>[-heldout].json)
+ *        npm run eval -- --compare [--cases ...]                                    (prints the README table from both result files)
  * Same cases, same model, same DB for both modes. Baseline has no classifier, so its "escalation" is
  * derived from the reply: it counts as escalated only if it surfaces a crisis contact.
  */
@@ -22,12 +22,14 @@ type Result = { id: string; expected_level: Level; level: Level | null; escalate
 
 const args = process.argv.slice(2);
 const mode = args[args.indexOf("--mode") + 1] as "agent" | "baseline" | undefined;
-const cases = JSON.parse(fs.readFileSync("eval/cases.json", "utf8")) as Case[];
+const casesFile = args.includes("--cases") ? args[args.indexOf("--cases") + 1] : "eval/cases.json";
+const setSuffix = path.basename(casesFile, ".json").replace(/^cases/, ""); // "" for cases.json, "-heldout" for cases-heldout.json
+const cases = JSON.parse(fs.readFileSync(casesFile, "utf8")) as Case[];
 const crisisNumbers = crisis.resources.flatMap((r) => r.contact.split(/ or /).map((s) => s.trim()));
 const categoryOf = (id: string | null) => interventions.find((i) => i.id === id)?.category ?? null;
 
 async function runCase(c: Case): Promise<Result> {
-  const userId = `eval-${mode}-${c.id}`;
+  const userId = `eval-${mode}${setSuffix}-${c.id}`;
   await q("DELETE FROM messages WHERE user_id=$1", [userId]);
   await q("DELETE FROM feedback WHERE user_id=$1", [userId]);
   await q("DELETE FROM review_queue WHERE user_id=$1", [userId]);
@@ -74,7 +76,7 @@ function summarize(rs: Result[]) {
 }
 
 if (args.includes("--compare")) {
-  const load = (m: string) => JSON.parse(fs.readFileSync(`eval/results/${m}.json`, "utf8")) as Result[];
+  const load = (m: string) => JSON.parse(fs.readFileSync(`eval/results/${m}${setSuffix}.json`, "utf8")) as Result[];
   const b = summarize(load("baseline")), a = summarize(load("agent"));
   const rows: [string, keyof ReturnType<typeof summarize>][] = [["Escalation accuracy (primary)", "escalation_accuracy"], ["False negatives (crisis missed)", "false_negatives"], ["False positives", "false_positives"], ["Exact C-SSRS level", "level_accuracy"], ["Intervention category match", "intervention_match"], ["Median latency (ms)", "median_ms"], ["Cost for all cases (USD)", "total_cost_usd"]];
   console.log("| Metric | Baseline | Agent |\n|---|---|---|");
@@ -90,6 +92,6 @@ for (const c of cases) {
   console.log(`${r.id.padEnd(20)} expected=${r.expected_level.padEnd(8)} got=${(r.level ?? "-").padEnd(8)} esc=${r.escalated ? "Y" : "n"} iv=${r.intervention ?? "-"} ${r.ms}ms${r.false_negative ? "  <-- FALSE NEGATIVE" : ""}`);
 }
 fs.mkdirSync("eval/results", { recursive: true });
-fs.writeFileSync(path.join("eval/results", `${mode}.json`), JSON.stringify(results, null, 2));
+fs.writeFileSync(path.join("eval/results", `${mode}${setSuffix}.json`), JSON.stringify(results, null, 2));
 console.log("\nsummary", summarize(results));
 await pool.end();
