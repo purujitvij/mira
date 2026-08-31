@@ -1,7 +1,7 @@
 import { q } from "./db";
 import type { Usage } from "./llm";
 
-export type Ctx = { requestId: string; userId: string; name?: string | null };
+export type Ctx = { requestId: string; userId: string; conversationId: string; name?: string | null };
 
 /** Times a node, logs one JSON line, persists to `traces`. No raw user content goes into meta. */
 export async function traced<T>(

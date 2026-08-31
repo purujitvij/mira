@@ -14,8 +14,8 @@ const CRISIS_TEXT =
   "It sounds like you're in a lot of pain right now, and I'm really glad you said it here. I'm not able to keep you safe on my own, and you deserve support from a real person tonight. Please reach one of these now — they are free and available 24/7. If you're in immediate danger, go to the nearest emergency room.";
 const SOFT_RESOURCE = " If things get heavier, Tele MANAS is free and open 24/7: 14416.";
 
-export function newCtx(userId: string, name: string | null = null): Ctx {
-  return { requestId: crypto.randomUUID(), userId, name };
+export function newCtx(userId: string, name: string | null = null, conversationId: string = crypto.randomUUID()): Ctx {
+  return { requestId: crypto.randomUUID(), userId, conversationId, name };
 }
 
 /** Advanced solution: safety gate -> (extract ‖ memory) -> plan (pure) -> generate (stream). */
@@ -67,6 +67,6 @@ export async function* runAgent(ctx: Ctx, message: string): AsyncGenerator<Event
 }
 
 export async function saveTurn(ctx: Ctx, user: string, assistant: string, level: string | null, state: unknown, interventionId: string | null) {
-  await q("INSERT INTO messages (user_id,role,content,safety_level,state) VALUES ($1,'user',$2,$3,$4)", [ctx.userId, user, level, state ? JSON.stringify(state) : null]);
-  await q("INSERT INTO messages (user_id,role,content,intervention_id) VALUES ($1,'assistant',$2,$3)", [ctx.userId, assistant, interventionId]);
+  await q("INSERT INTO messages (user_id,conversation_id,role,content,safety_level,state) VALUES ($1,$2,'user',$3,$4,$5)", [ctx.userId, ctx.conversationId, user, level, state ? JSON.stringify(state) : null]);
+  await q("INSERT INTO messages (user_id,conversation_id,role,content,intervention_id) VALUES ($1,$2,'assistant',$3,$4)", [ctx.userId, ctx.conversationId, assistant, interventionId]);
 }
