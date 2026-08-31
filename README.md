@@ -124,7 +124,7 @@ The database layer is plain `pg`; Supabase is just hosted Postgres.
 2. Vercel → Import the repo → Environment variables: `DATABASE_URL` (the string from step 1), `LLM_BASE_URL`, `LLM_API_KEY`, `MIRA_MODEL` (a hosted model — Ollama on localhost is not reachable from Vercel). Deploy.
 3. Open `/`, send a message, then `/review` — the tables exist the moment the first request lands.
 
-Notes: `src/lib/db.ts` turns on TLS and shrinks the pool to 3 whenever `DATABASE_URL` is not localhost; `next.config.ts` bundles `db/schema.sql` into the functions; `api/chat` declares `maxDuration = 60` because an agent turn is three model calls plus a streamed reply. The eval scripts run from a laptop against the same `DATABASE_URL` if you want the results tables to live in Supabase too.
+Notes: use the **Transaction pooler** string (`…pooler.supabase.com:6543`), not the direct one (`db.<ref>.supabase.co:5432`) — direct connections are IPv6-only on Supabase and unreachable from Vercel, though they work from a laptop. `db/schema.sql` enables row-level security on every table with no policies, so nothing is readable through Supabase's REST API with the publishable key (verified: `GET /rest/v1/messages` returns `[]`); the app connects as the table owner and is unaffected. `src/lib/db.ts` turns on TLS and shrinks the pool to 3 whenever `DATABASE_URL` is not localhost; `next.config.ts` bundles `db/schema.sql` into the functions; `api/chat` declares `maxDuration = 60` because an agent turn is three model calls plus a streamed reply. The eval scripts run from a laptop against the same `DATABASE_URL` if you want the results tables to live in Supabase too.
 
 ## Layout
 

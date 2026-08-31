@@ -44,3 +44,10 @@ CREATE TABLE IF NOT EXISTS traces (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS traces_req_idx ON traces (request_id);
+
+-- On Supabase, tables in `public` are reachable through the REST API with the publishable key unless RLS is on.
+-- No policies: the app connects as the table owner (bypasses RLS); anon/authenticated see nothing. Harmless locally.
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE review_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE traces ENABLE ROW LEVEL SECURITY;
