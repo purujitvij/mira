@@ -1,17 +1,20 @@
 import { z } from "zod";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { runAgent } from "@/agents/pipeline";
 import { runBaseline } from "@/agents/baseline";
 import { newCtx } from "@/agents/pipeline";
 
 export const maxDuration = 60; // Vercel: an agent turn is 3 model calls + a streamed reply; the default 10 s is too short
 
-const Body = z.object({ userId: z.string().min(1).max(64), message: z.string().min(1).max(4000), mode: z.enum(["agent", "baseline"]).default("agent") });
+const Body = z.object({ message: z.string().min(1).max(4000), mode: z.enum(["agent", "baseline"]).default("agent") });
 
 export async function POST(request: Request) {
+  const { userId } = await auth();
+  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { userId, message, mode } = parsed.data;
-  const ctx = newCtx(userId);
+  const { message, mode } = parsed.data;
+  const ctx = newCtx(userId, (await currentUser())?.firstName ?? null);
   const gen = mode === "baseline" ? runBaseline(ctx, message) : runAgent(ctx, message);
 
   // On client disconnect we keep draining the generator so the turn is still persisted.

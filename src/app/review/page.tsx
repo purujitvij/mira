@@ -1,10 +1,12 @@
 export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { q } from "@/lib/db";
+import { requireReviewer } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 async function resolve(formData: FormData) {
   "use server";
+  await requireReviewer();
   await q("UPDATE review_queue SET status=$2 WHERE id=$1", [Number(formData.get("id")), String(formData.get("status"))]);
   revalidatePath("/review");
 }
@@ -21,6 +23,7 @@ const Level = ({ label, level }: { label: string; level: string | null }) => (
 
 /** Human reviewer queue (ground rule #5). Every High/Critical call and every rule/LLM disagreement lands here. */
 export default async function Review() {
+  await requireReviewer();
   const rows = await q<{ id: number; user_id: string; message: string; rule_level: string; llm_level: string | null; final_level: string; created_at: string }>(
     "SELECT id,user_id,message,rule_level,llm_level,final_level,created_at FROM review_queue WHERE status='open' ORDER BY id DESC LIMIT 50");
   return (
