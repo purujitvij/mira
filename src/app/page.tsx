@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { Event, Intervention, Resource } from "@/agents/types";
 
-type Turn = { role: "user" | "assistant"; text: string; intervention?: Intervention | null; crisis?: Resource[]; pattern?: string | null; level?: string; requestId?: string };
+type Turn = { role: "user" | "assistant"; text: string; intervention?: Intervention | null; crisis?: Resource[]; pattern?: string | null; level?: string; requestId?: string; rated?: boolean };
 
 const pill = "h-10 rounded-full px-4 text-[13px] font-medium transition-colors";
 const PhoneIcon = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3.5 2h2.5l1.2 3-1.5 1a8 8 0 0 0 4.3 4.3l1-1.5 3 1.2v2.5a1.5 1.5 0 0 1-1.6 1.5A12 12 0 0 1 2 3.6 1.5 1.5 0 0 1 3.5 2z" /></svg>;
@@ -54,8 +54,10 @@ export default function Home() {
     setBusy(false);
   }
 
-  async function feedback(interventionId: string, helpful: boolean) {
-    await fetch("/api/feedback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId, interventionId, helpful }) });
+  async function feedback(turnIndex: number, interventionId: string, helpful: boolean) {
+    setTurns((ts) => ts.map((t, i) => (i === turnIndex ? { ...t, rated: helpful } : t)));
+    const res = await fetch("/api/feedback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userId, interventionId, helpful }) });
+    if (!res.ok) setTurns((ts) => ts.map((t, i) => (i === turnIndex ? { ...t, rated: undefined } : t)));
   }
 
   return (
@@ -133,10 +135,12 @@ export default function Home() {
                   ))}
                 </ol>
                 <div className="flex items-center justify-between border-t border-[#efeae2] pt-3.5">
-                  <span className="text-[13px] text-ink-3">Did this help?</span>
+                  <span className="text-[13px] text-ink-3">{t.rated === undefined ? "Did this help?" : t.rated ? "Noted — I'll suggest this again." : "Noted — I'll try something else next time."}</span>
                   <div className="flex gap-2">
-                    <button onClick={() => feedback(t.intervention!.id, true)} className={`${pill} bg-sage text-white hover:bg-sage-deep`}>It helped</button>
-                    <button onClick={() => feedback(t.intervention!.id, false)} className={`${pill} border border-line-2 bg-white text-ink-2 hover:bg-ground`}>Didn&apos;t help</button>
+                    <button onClick={() => feedback(i, t.intervention!.id, true)} disabled={t.rated !== undefined} aria-pressed={t.rated === true}
+                      className={`${pill} ${t.rated === true ? "bg-sage-deep text-white" : "bg-sage text-white hover:bg-sage-deep"} disabled:cursor-default disabled:opacity-60 aria-pressed:opacity-100`}>It helped</button>
+                    <button onClick={() => feedback(i, t.intervention!.id, false)} disabled={t.rated !== undefined} aria-pressed={t.rated === false}
+                      className={`${pill} border border-line-2 bg-white text-ink-2 hover:bg-ground disabled:cursor-default disabled:opacity-60 aria-pressed:opacity-100 aria-pressed:border-ink-2`}>Didn&apos;t help</button>
                   </div>
                 </div>
               </div>

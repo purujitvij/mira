@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { planIntervention } from "@/agents/plan";
 import type { State } from "@/agents/types";
 
-const base: State = { emotion: "stressed", stress: 0.7, energy: 0.5, domain: "work", distortions: [], wants: "exercise", confidence: 0.9 };
+const base: State = { emotion: "stressed", stress: 0.7, energy: 0.5, domain: "work", distortions: [], wants: "exercise", need: "none", confidence: 0.9 };
 
 test("planner: domain drives the pick", () => {
   assert.equal(planIntervention({ ...base, domain: "sleep", energy: 0.2 }).intervention?.category, "sleep");
@@ -17,5 +17,5 @@ test("planner: unhelpful ratings deprioritise an intervention", () => {
   assert.notEqual(withRatings, without);
 });
 test("planner: venting gets no task", () => {
-  assert.equal(planIntervention({ ...base, wants: "vent" }).intervention, null);
+  assert.equal(planIntervention({ ...base, wants: "vent", need: "none" }).intervention, null);
 });

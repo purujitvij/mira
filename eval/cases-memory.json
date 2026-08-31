@@ -1,0 +1,26 @@
+[
+  { "id": "mem-helped-walk", "message": "Work stress again and I'm running on empty.", "expected_level": "low", "expected_category": "behavioral-activation", "tags": ["memory", "feedback"],
+    "feedback": [{ "intervention_id": "walk-5", "helpful": true }, { "intervention_id": "walk-5", "helpful": true }],
+    "must_use": ["walk-5"], "note": "Without ratings the planner ties box-breathing and walk-5 and picks the shorter one (box-breathing). Two helpful ratings must flip it." },
+  { "id": "mem-helped-sleeplog", "message": "Slept badly again and everything at work is piling up.", "expected_level": "low", "expected_category": "sleep", "tags": ["memory", "feedback"],
+    "feedback": [{ "intervention_id": "sleep-log", "helpful": true }, { "intervention_id": "sleep-log", "helpful": true }],
+    "must_use": ["sleep-log"] },
+  { "id": "mem-unhelpful-box", "message": "Heart racing before the big meeting again, same as last week.", "expected_level": "low", "expected_category": "grounding", "tags": ["memory", "feedback"],
+    "feedback": [{ "intervention_id": "box-breathing", "helpful": false }, { "intervention_id": "box-breathing", "helpful": false }],
+    "must_avoid": ["box-breathing"], "note": "Same category is fine (five-senses); the specific rejected exercise must not come back." },
+  { "id": "mem-unhelpful-all-grounding", "message": "Panicking about tomorrow's review and I can't sit still.", "expected_level": "low", "expected_category": null, "tags": ["memory", "feedback"],
+    "feedback": [{ "intervention_id": "box-breathing", "helpful": false }, { "intervention_id": "box-breathing", "helpful": false }, { "intervention_id": "five-senses", "helpful": false }, { "intervention_id": "five-senses", "helpful": false }],
+    "must_avoid": ["box-breathing", "five-senses"] },
+  { "id": "mem-pattern-rising", "message": "Another night of four hours and I bit my colleague's head off this morning.", "expected_level": "low", "expected_category": "sleep", "tags": ["memory", "history"],
+    "history": [
+      { "role": "user", "content": "Slept okay, work is fine, just a normal week.", "state": { "emotion": "fine", "stress": 0.3, "energy": 0.6, "domain": "work", "distortions": [], "wants": "vent", "confidence": 0.8 } },
+      { "role": "assistant", "content": "Glad it's a steady week." },
+      { "role": "user", "content": "Only five hours last night, and the deadline moved up.", "state": { "emotion": "tense", "stress": 0.6, "energy": 0.4, "domain": "sleep", "distortions": [], "wants": "unsure", "confidence": 0.7 } },
+      { "role": "assistant", "content": "Two things landing at once." },
+      { "role": "user", "content": "Four hours again. I snapped at my partner over nothing.", "state": { "emotion": "frayed", "stress": 0.75, "energy": 0.25, "domain": "sleep", "distortions": [], "wants": "unsure", "confidence": 0.7 } },
+      { "role": "assistant", "content": "Short sleep makes everything sharper." }
+    ],
+    "expect_pattern": true, "note": "Three check-ins with rising stress and repeated sleep mentions must produce a non-causal pattern sentence." },
+  { "id": "mem-no-pattern-first", "message": "Rough day at work, deadlines everywhere.", "expected_level": "low", "expected_category": null, "tags": ["memory", "history"],
+    "expect_pattern": false, "note": "First check-in: the reply must not claim to have noticed a pattern." }
+]

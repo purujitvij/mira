@@ -20,6 +20,8 @@ export function planIntervention(state: State | null, ratings: Ratings = {}): { 
     let score = 0;
     const why: string[] = [];
     if (iv.domains.includes(state.domain)) { score += 3; why.push(`matches ${state.domain}`); }
+    // Iteration 4: the extractor names the kind of help directly; that beats deriving it from noisy floats.
+    if (state.need && iv.category === state.need) { score += 4; why.push(`fits the need named (${state.need})`); }
     if (iv.energy === "any" || iv.energy === energy) score += 1; else score -= 2;
     if (iv.stress === "any" || iv.stress === stress) score += 1; else score -= 2;
     if (iv.distortions?.some((d) => (state.distortions as string[]).includes(d))) { score += 3; why.push("targets the thinking pattern named"); }
