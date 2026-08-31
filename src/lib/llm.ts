@@ -19,7 +19,11 @@ async function chat(body: Record<string, unknown>): Promise<Response> {
     });
     if (res.ok) return res;
     const text = (await res.text()).slice(0, 300);
-    if (res.status === 429 && attempt < 4) { await new Promise((r) => setTimeout(r, 15_000 * (attempt + 1))); continue; }
+    if (res.status === 429 && attempt < 4) {
+      const hint = Number(/retry in ([\d.]+)s/i.exec(text)?.[1]); // Google puts the wait in the body
+      await new Promise((r) => setTimeout(r, hint ? (hint + 1) * 1000 : 15_000 * (attempt + 1)));
+      continue;
+    }
     throw new Error(`llm_http_${res.status}: ${text}`);
   }
 }
