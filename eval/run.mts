@@ -1,6 +1,7 @@
 /**
  * Usage: npm run eval -- --mode agent|baseline [--cases eval/cases-heldout.json]   (writes eval/results/<mode>[-heldout].json)
  *        npm run eval -- --compare [--cases ...]                                    (prints the README table from both result files)
+ *        add --tag <name> to any of the above to read/write <mode>[-set].<name>.json instead (results per model)
  * Same cases, same model, same DB for both modes. Baseline has no classifier, so its "escalation" is
  * derived from the reply: it counts as escalated only if it surfaces a crisis contact.
  */
@@ -25,11 +26,12 @@ const mode = args[args.indexOf("--mode") + 1] as "agent" | "baseline" | undefine
 const casesFile = args.includes("--cases") ? args[args.indexOf("--cases") + 1] : "eval/cases.json";
 const setSuffix = path.basename(casesFile, ".json").replace(/^cases/, ""); // "" for cases.json, "-heldout" for cases-heldout.json
 const cases = JSON.parse(fs.readFileSync(casesFile, "utf8")) as Case[];
+const tag = args.includes("--tag") ? `.${args[args.indexOf("--tag") + 1]}` : ""; // e.g. --tag gemini -> agent.gemini.json, keeps other models' results
 const crisisNumbers = crisis.resources.flatMap((r) => r.contact.split(/ or /).map((s) => s.trim()));
 const categoryOf = (id: string | null) => interventions.find((i) => i.id === id)?.category ?? null;
 
 async function runCase(c: Case): Promise<Result> {
-  const userId = `eval-${mode}${setSuffix}-${c.id}`;
+  const userId = `eval-${mode}${setSuffix}${tag}-${c.id}`;
   await q("DELETE FROM messages WHERE user_id=$1", [userId]);
   await q("DELETE FROM feedback WHERE user_id=$1", [userId]);
   await q("DELETE FROM review_queue WHERE user_id=$1", [userId]);
@@ -73,17 +75,17 @@ function summarize(rs: Result[]) {
   const tin = rs.reduce((a, r) => a + r.tokens_in, 0), tout = rs.reduce((a, r) => a + r.tokens_out, 0);
   // ponytail: list prices (USD per 1M tokens in/out) for the models we actually ran; unknown model -> 0 and says so.
   const PRICE: Record<string, [number, number]> = { "gemini-2.5-flash": [0.3, 2.5], "claude-opus-5": [5, 25], "llama3.1:8b": [0, 0] };
-  const [pin, pout] = PRICE[process.env.MIRA_MODEL ?? "gemini-2.5-flash"] ?? [0, 0];
-  const cost = (tin * pin + tout * pout) / 1e6;
+  const price = PRICE[process.env.MIRA_MODEL ?? "gemini-2.5-flash"];
+  const cost = price ? ((tin * price[0] + tout * price[1]) / 1e6).toFixed(3) : `n/a (${tin + tout} tokens; price for ${process.env.MIRA_MODEL} not in table)`;
   return {
     n, escalation_accuracy: `${escAcc}/${n}`, false_negatives: rs.filter((r) => r.false_negative).length, false_positives: rs.filter((r) => r.false_positive).length,
     level_accuracy: rs.some((r) => r.level) ? `${lvlAcc}/${n}` : "n/a", intervention_match: withCat.length && rs.some((r) => r.intervention) ? `${ivMatch}/${withCat.length}` : "n/a",
-    memory_ok: withMem.length ? `${withMem.filter((r) => r.memory_ok).length}/${withMem.length}` : "n/a", median_ms: [...rs].sort((a, b) => a.ms - b.ms)[Math.floor(n / 2)].ms, total_cost_usd: cost.toFixed(3),
+    memory_ok: withMem.length ? `${withMem.filter((r) => r.memory_ok).length}/${withMem.length}` : "n/a", median_ms: [...rs].sort((a, b) => a.ms - b.ms)[Math.floor(n / 2)].ms, total_cost_usd: cost,
   };
 }
 
 if (args.includes("--compare")) {
-  const load = (m: string) => JSON.parse(fs.readFileSync(`eval/results/${m}${setSuffix}.json`, "utf8")) as Result[];
+  const load = (m: string) => JSON.parse(fs.readFileSync(`eval/results/${m}${setSuffix}${tag}.json`, "utf8")) as Result[];
   const b = summarize(load("baseline")), a = summarize(load("agent"));
   const rows: [string, keyof ReturnType<typeof summarize>][] = [["Escalation accuracy (primary)", "escalation_accuracy"], ["False negatives (crisis missed)", "false_negatives"], ["False positives", "false_positives"], ["Exact C-SSRS level", "level_accuracy"], ["Intervention category match", "intervention_match"], ["Memory respected (ratings / pattern)", "memory_ok"], ["Median latency (ms)", "median_ms"], ["Cost for all cases (USD)", "total_cost_usd"]];
   console.log("| Metric | Baseline | Agent |\n|---|---|---|");
@@ -99,6 +101,6 @@ for (const c of cases) {
   console.log(`${r.id.padEnd(20)} expected=${r.expected_level.padEnd(8)} got=${(r.level ?? "-").padEnd(8)} esc=${r.escalated ? "Y" : "n"} iv=${r.intervention ?? "-"} ${r.ms}ms${r.false_negative ? "  <-- FALSE NEGATIVE" : ""}${r.memory_ok === false ? "  <-- MEMORY IGNORED" : ""}`);
 }
 fs.mkdirSync("eval/results", { recursive: true });
-fs.writeFileSync(path.join("eval/results", `${mode}${setSuffix}.json`), JSON.stringify(results, null, 2));
+fs.writeFileSync(path.join("eval/results", `${mode}${setSuffix}${tag}.json`), JSON.stringify(results, null, 2));
 console.log("\nsummary", summarize(results));
 await pool.end();

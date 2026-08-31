@@ -3,6 +3,11 @@ import { z } from "zod";
 // ponytail: raw fetch against any OpenAI-compatible /chat/completions; change LLM_BASE_URL + MIRA_MODEL to swap provider.
 const BASE = process.env.LLM_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta/openai";
 export const MODEL = process.env.MIRA_MODEL ?? "gemini-2.5-flash";
+// ponytail: thinking models (Gemini 3.x) spend output tokens on reasoning before the JSON, so budgets need a floor
+// and a low effort hint; other OpenAI-compatible servers ignore unknown fields.
+const GOOGLE = BASE.includes("googleapis.com");
+const EXTRA = GOOGLE ? { reasoning_effort: "low" } : {};
+const budget = (n: number) => (GOOGLE ? Math.max(n, 1500) : n);
 
 export type Usage = { tokens_in: number; tokens_out: number };
 export type Msg = { role: "system" | "user" | "assistant"; content: string };
@@ -32,7 +37,8 @@ async function chat(body: Record<string, unknown>): Promise<Response> {
 export async function parseJson<T extends z.ZodType>(opts: { schema: T; system: string; user: string; maxTokens?: number }): Promise<{ data: z.infer<T>; usage: Usage }> {
   const schema = { ...z.toJSONSchema(opts.schema), $schema: undefined }; // JSON.stringify drops undefined
   const res = await chat({
-    max_tokens: opts.maxTokens ?? 1024,
+    ...EXTRA,
+    max_tokens: budget(opts.maxTokens ?? 1024),
     messages: [{ role: "system", content: opts.system }, { role: "user", content: opts.user }],
     response_format: { type: "json_schema", json_schema: { name: "out", schema } },
   });
@@ -46,7 +52,7 @@ export async function parseJson<T extends z.ZodType>(opts: { schema: T; system: 
 
 /** Streams text deltas; returns usage. */
 export async function* streamText(opts: { system: string; messages: Msg[]; maxTokens?: number }): AsyncGenerator<string, Usage> {
-  const res = await chat({ max_tokens: opts.maxTokens ?? 600, stream: true, stream_options: { include_usage: true }, messages: [{ role: "system", content: opts.system }, ...opts.messages] });
+  const res = await chat({ ...EXTRA, max_tokens: budget(opts.maxTokens ?? 600), stream: true, stream_options: { include_usage: true }, messages: [{ role: "system", content: opts.system }, ...opts.messages] });
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "", usage: Usage = { tokens_in: 0, tokens_out: 0 };
